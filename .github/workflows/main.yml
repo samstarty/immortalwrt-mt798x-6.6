@@ -27,13 +27,25 @@ jobs:
           ref: ${{ github.event.inputs.target_branch }}
           fetch-depth: 0
 
-      - name: Initialize environment
+      - name: Initialize environment (Fixed dependencies)
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          # 清理不必要的软件
           sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          
+          # 更新源并安装必要依赖
           sudo -E apt-get -qq update
-          sudo -E apt-get -qq install $(curl -fsSL https://build-scripts.immortalwrt.org/init_build_environment.sh | grep -oP 'apt install \K.*')
+          sudo -E apt-get -qq install \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
+            gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+            mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 \
+            python3 python3-pip libpython3-dev qemu-utils rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev \
+            clang lld golang nodejs yarn
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
           sudo timedatectl set-timezone "Asia/Shanghai"
@@ -51,7 +63,6 @@ jobs:
 
       - name: Load MT7981-AX3000 configuration
         run: |
-          # 加载MT7981-AX3000专用配置
           cp -f defconfig/mt7981-ax3000.config .config
           make defconfig
 
