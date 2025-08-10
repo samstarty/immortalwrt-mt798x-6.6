@@ -27,50 +27,45 @@ jobs:
           ref: ${{ github.event.inputs.target_branch }}
           fetch-depth: 0
 
-      - name: Fix Ubuntu sources and resolve dependencies
+      - name: Install all required dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # 清理旧源配置
+          # 清理并配置软件源
           sudo rm -rf /etc/apt/sources.list.d/*
-          
-          # 添加Ubuntu官方源（适用于Ubuntu 22.04）
           echo "deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse" | sudo tee /etc/apt/sources.list
           echo "deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           echo "deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           echo "deb http://security.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           
-          # 更新源并修复可能的依赖问题
+          # 彻底更新系统并修复依赖
           sudo -E apt-get -qq update
-          sudo -E apt-get -qq upgrade -y
-          
-          # 修复破损的依赖关系
+          sudo -E apt-get -qq full-upgrade -y
           sudo -E apt-get -qq install -f
           sudo -E dpkg --configure -a
           
-          # 安装aptitude（更强大的依赖解决工具）
-          sudo -E apt-get -qq install aptitude
-          
-          # 使用aptitude安装基础依赖（自动解决冲突）
-          sudo -E aptitude -y -q install \
+          # 安装OpenWRT官方文档指定的所有依赖
+          sudo -E apt-get -qq install \
             build-essential libc6-dev gcc g++ make \
             autoconf automake libtool pkgconf gettext \
-            git curl wget unzip bzip2 xz-utils \
+            git subversion curl wget unzip bzip2 xz-utils \
             python3 python3-dev libpython3-dev \
-            gawk  # 明确添加GNU awk工具
-          
-          # 使用aptitude安装编译所需依赖
-          sudo -E aptitude -y -q install \
-            ack antlr3 asciidoc autopoint binutils bison \
-            ccache cmake cpio device-tree-compiler fastjar flex \
-            gcc-multilib g++-multilib gperf haveged help2man intltool \
-            libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev \
-            libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev \
-            libncursesw5-dev libreadline-dev libssl-dev lrzsz \
-            mkisofs msmtp nano ninja-build p7zip p7zip-full patch \
-            qemu-utils rsync scons squashfs-tools subversion swig \
-            texinfo uglifyjs upx-ucl vim xmlto xxd zlib1g-dev \
-            clang lld golang nodejs yarn
+            gawk flex bison diffutils patch \
+            libncurses5-dev libncursesw5-dev libreadline-dev \
+            zlib1g-dev libssl-dev libelf-dev \
+            ccache cmake ninja-build \
+            device-tree-compiler \
+            libgmp3-dev libmpc-dev libmpfr-dev \
+            libltdl-dev libglib2.0-dev \
+            asciidoc xmlto texinfo \
+            rsync squashfs-tools p7zip-full \
+            golang clang lld \
+            nodejs yarn \
+            libtinfo5 lib32z1 libc6-dev-i386 \
+            ack antlr3 autopoint fastjar gperf \
+            haveged help2man intltool lrzsz \
+            mkisofs msmtp nano qemu-utils \
+            scons swig uglifyjs upx-ucl vim xxd
           
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
@@ -82,15 +77,18 @@ jobs:
         run: |
           rm -rf ./tmp ./bin ./build_dir ./staging_dir ./dl/* && mkdir -p ./tmp
 
-      - name: Update feeds
+      - name: Update and install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+          # 确保feeds正确安装
+          ./scripts/feeds install -f -a
 
       - name: Load MT7981-AX3000 configuration
         run: |
           cp -f defconfig/mt7981-ax3000.config .config
-          make defconfig
+          # 强制更新配置，解决可能的配置冲突
+          make defconfig FORCE=1
 
       - name: Download packages
         run: |
@@ -99,7 +97,8 @@ jobs:
 
       - name: Compile firmware
         run: |
-          make -j$(nproc) || make -j1 || make -j1 V=s
+          # 首次编译使用单线程以更好地捕获错误
+          make -j1 V=s
           echo "COMPILE_END_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
 
       - name: Organize output files
