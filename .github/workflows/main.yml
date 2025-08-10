@@ -27,7 +27,7 @@ jobs:
           ref: ${{ github.event.inputs.target_branch }}
           fetch-depth: 0
 
-      - name: Fix Ubuntu sources and install dependencies
+      - name: Fix Ubuntu sources and resolve dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
@@ -40,18 +40,26 @@ jobs:
           echo "deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           echo "deb http://security.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
           
-          # 更新源并安装必要依赖
+          # 更新源并修复可能的依赖问题
           sudo -E apt-get -qq update
+          sudo -E apt-get -qq upgrade -y
           
-          # 分阶段安装依赖，先安装基础包
-          sudo -E apt-get -qq install \
+          # 修复破损的依赖关系
+          sudo -E apt-get -qq install -f
+          sudo -E dpkg --configure -a
+          
+          # 安装aptitude（更强大的依赖解决工具）
+          sudo -E apt-get -qq install aptitude
+          
+          # 使用aptitude安装基础依赖（自动解决冲突）
+          sudo -E aptitude -y -q install \
             build-essential libc6-dev gcc g++ make \
             autoconf automake libtool pkgconf gettext \
             git curl wget unzip bzip2 xz-utils \
             python3 python3-dev libpython3-dev
           
-          # 安装编译OpenWRT所需的其他依赖
-          sudo -E apt-get -qq install \
+          # 使用aptitude安装编译所需依赖
+          sudo -E aptitude -y -q install \
             ack antlr3 asciidoc autopoint binutils bison \
             ccache cmake cpio device-tree-compiler fastjar flex gawk \
             gcc-multilib g++-multilib gperf haveged help2man intltool \
