@@ -1,0 +1,79 @@
+name: Build ImmortalWRT
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_workspace:
+        description: 'Clean workspace before build'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      target_branch:
+        description: 'Branch to build'
+        required: true
+        default: 'main'
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          fetch-depth: 0
+
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install $(curl -fsSL https://is.gd/depends_ubuntu_2204)
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "Asia/Shanghai"
+          echo "COMPILE_STARTING_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+
+      - name: Clean workspace
+        if: ${{ github.event.inputs.clean_workspace == 'true' }}
+        run: |
+          rm -rf ./tmp && mkdir -p ./tmp
+
+      - name: Update feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Load default configuration
+        run: |
+          make defconfig
+
+      - name: Download packages
+        run: |
+          make download -j$(nproc)
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile firmware
+        run: |
+          make -j$(nproc) || make -j1 || make -j1 V=s
+          echo "COMPILE_ENDING_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+
+      - name: Organize files
+        run: |
+          mkdir -p ./artifact/firmware
+          mkdir -p ./artifact/buildinfo
+          find ./bin/targets/ -name "*firmware*.bin" -exec cp {} ./artifact/firmware/ \;
+          find ./bin/targets/ -name "*.buildinfo" -exec cp {} ./artifact/buildinfo/ \;
+          find ./bin/targets/ -name "*.manifest" -exec cp {} ./artifact/buildinfo/ \;
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: immortalwrt-firmware-${{ env.COMPILE_STARTING_TIME }}
+          path: ./artifact/
