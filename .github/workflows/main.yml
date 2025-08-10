@@ -1,4 +1,4 @@
-name: Build ImmortalWRT
+name: Build ImmortalWRT for MT7981-AX3000
 
 on:
   workflow_dispatch:
@@ -14,66 +14,67 @@ on:
       target_branch:
         description: 'Branch to build'
         required: true
-        default: 'main'
+        default: 'openwrt-24.10-6.6'
         type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.target_branch }}
           fetch-depth: 0
 
-      - name: Initialization environment
+      - name: Initialize environment
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo -E apt-get -qq update
-          sudo -E apt-get -qq install $(curl -fsSL https://is.gd/depends_ubuntu_2204)
+          sudo -E apt-get -qq install $(curl -fsSL https://build-scripts.immortalwrt.org/init_build_environment.sh | grep -oP 'apt install \K.*')
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
           sudo timedatectl set-timezone "Asia/Shanghai"
-          echo "COMPILE_STARTING_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+          echo "COMPILE_START_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
 
       - name: Clean workspace
         if: ${{ github.event.inputs.clean_workspace == 'true' }}
         run: |
-          rm -rf ./tmp && mkdir -p ./tmp
+          rm -rf ./tmp ./bin ./build_dir ./staging_dir ./dl/* && mkdir -p ./tmp
 
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Load default configuration
+      - name: Load MT7981-AX3000 configuration
         run: |
+          # 加载MT7981-AX3000专用配置
+          cp -f defconfig/mt7981-ax3000.config .config
           make defconfig
 
       - name: Download packages
         run: |
           make download -j$(nproc)
-          find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
       - name: Compile firmware
         run: |
           make -j$(nproc) || make -j1 || make -j1 V=s
-          echo "COMPILE_ENDING_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+          echo "COMPILE_END_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
 
-      - name: Organize files
+      - name: Organize output files
         run: |
-          mkdir -p ./artifact/firmware
-          mkdir -p ./artifact/buildinfo
-          find ./bin/targets/ -name "*firmware*.bin" -exec cp {} ./artifact/firmware/ \;
+          mkdir -p ./artifact/firmware ./artifact/buildinfo
+          find ./bin/targets/ -name "*.bin" -exec cp {} ./artifact/firmware/ \;
           find ./bin/targets/ -name "*.buildinfo" -exec cp {} ./artifact/buildinfo/ \;
           find ./bin/targets/ -name "*.manifest" -exec cp {} ./artifact/buildinfo/ \;
 
-      - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v3
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-firmware-${{ env.COMPILE_STARTING_TIME }}
+          name: mt7981-ax3000-firmware-${{ env.COMPILE_START_TIME }}
           path: ./artifact/
+          retention-days: 14
